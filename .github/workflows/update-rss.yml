@@ -1,0 +1,58 @@
+name: Actualiser le flux RSS ACT Auto Controle
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+  push:
+    paths-ignore:
+      - "public/**"
+      - ".rss-state.json"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Generer le flux RSS
+        run: python generate_rss.py --output-dir public --state-file .rss-state.json
+
+      - name: Enregistrer une nouvelle version du flux
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Aucun changement public detecte."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/feed.xml public/index.html .rss-state.json
+          git commit -m "chore: update RSS feed"
+          git push
+
+      - name: Configurer GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Preparer l artefact Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Publier sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
